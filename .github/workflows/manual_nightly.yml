@@ -8,25 +8,18 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest  # You can choose a different runner if needed
+    runs-on: ubuntu-latest
     permissions: write-all
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Specify the branch you want
-          ref: development
+          ref: dev
           fetch-depth: 0
 
-      - name: Force sync with latest development
-        run: |
-          git fetch origin development
-          git checkout development
-          git reset --hard origin/development
-
       - name: Set up JDK 17
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
@@ -64,7 +57,6 @@ jobs:
           title: "Nightly Build"
           files: |
             runelite-client/build/libs/microbot-*.jar
-
 
       - name: Upload Jar to Hetzner
         continue-on-error: true
