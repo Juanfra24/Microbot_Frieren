@@ -195,9 +195,9 @@ Files intentionally deleted in this fork (as of 2026-03):
 | `questhelper/runeliteobjects/Cheerer.java` | `1460f4e9` | Same |
 | `questhelper/runeliteobjects/extendedruneliteobjects/RuneliteObjectManager.java` | `1460f4e9` | Same |
 | `questhelper/statemanagement/PlayerStateManager.java` | `1460f4e9` | Same |
-| `MicrobotVersionChecker.java` | Security hardening | Called `microbot.cloud` telemetry |
-| `RandomFactClient.java` | Security hardening | Called `microbot.cloud` telemetry |
 | `MicrobotApi.java` | Security hardening | Called `microbot.cloud` telemetry |
+
+> Note: `MicrobotVersionChecker.java` and `RandomFactClient.java` are NOT in this table. They are permanently deleted (not stubbed) and have explicit per-file entries in Zone 2 of `docs/sync-policy.md` (Zone 2 covers all files with documented resolution rules, including permanent deletions). When upstream modifies them, the resolution is always `git rm <file>`.
 
 ---
 
