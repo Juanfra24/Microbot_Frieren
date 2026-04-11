@@ -126,10 +126,10 @@ public class Rs2Walker {
      * @return
      */
     private static WalkerState walkWithStateInternal(WorldPoint target, int distance) {
-        boolean reachableTileCheck = Rs2Tile.getReachableTilesFromTile(Rs2Player.getWorldLocation(), distance).containsKey(target);
+        int distToTarget = Rs2Player.getWorldLocation().distanceTo(target);
         LocalPoint localTarget = LocalPoint.fromWorld(Microbot.getClient().getTopLevelWorldView(), target);
         boolean walkableCheck = Rs2Tile.isWalkable(localTarget);
-        int distToTarget = Rs2Player.getWorldLocation().distanceTo(target);
+        boolean reachableTileCheck = distToTarget <= distance && Rs2Tile.getReachableTilesFromTile(Rs2Player.getWorldLocation(), distance).containsKey(target);
 
         if (reachableTileCheck || (!walkableCheck && distToTarget <= distance)) {
             return WalkerState.ARRIVED;
@@ -862,9 +862,9 @@ public class Rs2Walker {
                         transport.getType() == TransportType.TELEPORTATION_SPELL)
                 {
                     // For teleportation, we assume origin is null and simply check if the destination exists in the path.
-                    if (path.contains(transport.getDestination())) {
+                    int destIndex = path.indexOf(transport.getDestination());
+                    if (destIndex != -1) {
                         transportList.add(transport);
-                        int destIndex = path.indexOf(transport.getDestination());
                         // Advance the current index to the destination tile (or at least one forward)
                         currentIndex = destIndex > currentIndex ? destIndex : currentIndex + 1;
                         foundTransport = true;
@@ -890,10 +890,10 @@ public class Rs2Walker {
 
                     // For non-teleportation transports, ensure both origin and destination exist in the path
                     // and that the destination comes after the origin.
+                    int indexOfDestination = path.indexOf(transport.getDestination());
                     if (transport.getType() != TransportType.TELEPORTATION_ITEM &&
                             transport.getType() != TransportType.TELEPORTATION_SPELL) {
                         int indexOfOrigin = path.indexOf(transport.getOrigin());
-                        int indexOfDestination = path.indexOf(transport.getDestination());
                         if (indexOfOrigin == -1 || indexOfDestination == -1 || indexOfDestination < indexOfOrigin) {
                             continue;
                         }
@@ -902,8 +902,7 @@ public class Rs2Walker {
                     // If the current path point equals the transport's origin then add it.
                     if (currentPoint.equals(origin)) {
                         transportList.add(transport);
-                        int destIndex = path.indexOf(transport.getDestination());
-                        currentIndex = destIndex > currentIndex ? destIndex : currentIndex + 1;
+                        currentIndex = indexOfDestination > currentIndex ? indexOfDestination : currentIndex + 1;
                         foundTransport = true;
                         break;
                     }
@@ -918,8 +917,7 @@ public class Rs2Walker {
             }
         }
 
-        log.info("\n\nFound " + transportList.size() + " transports for path from " +
-                path.get(0) + " to " + path.get(path.size() - 1));
+        log.info("\n\nFound {} transports for path from {} to {}", transportList.size(), path.get(0), path.get(path.size() - 1));
 
         // Apply filtering and requirement setup if requested
         if (applyFiltering) {
@@ -1254,14 +1252,11 @@ public class Rs2Walker {
                 .min(Comparator.comparingInt(a -> _tiles.getOrDefault(a, Integer.MAX_VALUE)))
                 .orElse(null);
 
-        boolean noMatchingTileFound = path.stream()
-                .allMatch(a -> _tiles.getOrDefault(a, Integer.MAX_VALUE) == Integer.MAX_VALUE);
-
         /**
          * Check if the startPoint is null or no matching tile is found
          * If either condition is true, proceed to find the closest index in the path list.
          */
-        if (startPoint == null || noMatchingTileFound) {
+        if (startPoint == null || _tiles.getOrDefault(startPoint, Integer.MAX_VALUE) == Integer.MAX_VALUE) {
             Optional<Integer> closestIndexOptional = IntStream.range(0, path.size())
                     .boxed()
                     .min(Comparator.comparingInt(i -> Rs2Player.getWorldLocation().distanceTo(path.get(i))));
@@ -2299,20 +2294,35 @@ public class Rs2Walker {
                     return Arrays.stream(composition.getActions()).filter(Objects::nonNull).noneMatch(currentAction::equals) && !Rs2Player.isAnimating();
                 }, 300, 10000);
             case "Paddle Canoe":
-                @Component final int DESTINATION_MAP_PARENT = 42401792; // 647.3
-                @Component final int DESTINATION_LIST = 42401795; // 647.13
-
-                Rs2GameObject.interact(transport.getObjectId(), "Paddle Canoe");
-
-                boolean isDestinationMapVisible = sleepUntilTrue(() -> Rs2Widget.isWidgetVisible(DESTINATION_MAP_PARENT), 100, 10000);
-                if (!isDestinationMapVisible) {
-                    log.error("Destination map is not visible within timeout period");
+                if (!Rs2GameObject.interact(transport.getObjectId(), "Paddle Canoe")) {
+                    log.error("Failed to interact with canoe station");
                     return false;
                 }
 
-                Widget destinationListWidget = Rs2Widget.getWidget(DESTINATION_LIST);
+                // Wait for the player to actually walk to the canoe station and stop moving
+                // before checking for the destination map widget. The interact call only
+                // queues the click; the player still has to walk there.
+                sleepUntil(Rs2Player::isMoving, 2000);
+                sleepUntilTrue(() -> !Rs2Player.isMoving(), 100, 30000);
+
+                // OSRS update moved the canoe destination map from group 647 to
+                // CanoeMapLum (953) for the river Lum chain. CanoeMapDougne (952)
+                // is for a different chain not currently used by canoes.tsv.
+                boolean isDestinationMapVisible = sleepUntilTrue(
+                        () -> Rs2Widget.isWidgetVisible(InterfaceID.CanoeMapLum.MAIN_MAP),
+                        100, 10000);
+                if (!isDestinationMapVisible) {
+                    log.error("Canoe destination map (CanoeMapLum) not visible within timeout period");
+                    return false;
+                }
+
+                Widget destinationListWidget = Rs2Widget.getWidget(InterfaceID.CanoeMapLum.DESTINATIONS);
                 if (destinationListWidget == null) return false;
                 Widget destination = Rs2Widget.findWidget("Travel to " + displayInfo, List.of(destinationListWidget), false);
+                if (destination == null) {
+                    log.error("Could not find canoe destination widget for: {}", displayInfo);
+                    return false;
+                }
                 Rs2Widget.clickWidget(destination);
 
                 Rs2Dialogue.waitForCutScene(100, 15000);

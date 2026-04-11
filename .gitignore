@@ -39,11 +39,13 @@ bin/
 .DS_Store
 /cache/target/*
 
-# Command Center bot profiles (contain credentials)
-bot-*/
-microbot_profiles/
-**/credentials.properties
-**/commandcenter.properties
-**/status.port
-.worktrees/
-debug_temp_version.txt
+### Maven-style output (Gradle uses build/, but IDE/tools sometimes create this) ###
+target/
+
+### Test loop artifacts ###
+logs/
+REVIEW_FINDINGS.md.bak
+
+### Stray Node lockfiles (this is a Java/Gradle project) ###
+node_modules/
+package-lock.json
