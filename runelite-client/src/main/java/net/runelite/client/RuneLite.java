@@ -290,15 +290,16 @@ public class RuneLite
 			}
 		}
 
-		ProxyConfiguration.setupProxy(options, proxyInfo);
-
-		// Set Command Center system properties for plugin access
+		// Set Command Center system properties BEFORE setupProxy so the proxy
+		// loader can read the profile dir to pick up proxy= from credentials.properties.
 		if (options.has(ccProfileDir)) {
 			System.setProperty("cc-profile-dir", options.valueOf(ccProfileDir));
 		}
 		if (options.has(statusPortFile)) {
 			System.setProperty("status-port-file", options.valueOf(statusPortFile));
 		}
+
+		final String resolvedProxyUrl = ProxyConfiguration.setupProxy(options, proxyInfo);
 
         Thread.setDefaultUncaughtExceptionHandler((thread, throwable) ->
         {
@@ -315,7 +316,7 @@ public class RuneLite
 
 		SplashScreen.stage(0, "Setting up proxy", "Testing proxy address...");
 
-		if (options.has(proxyInfo)) {
+		if (resolvedProxyUrl != null) {
 			String ip = ProxyChecker.getDetectedIp(okHttpClient);
 			if (ip.isEmpty()) {
 				Microbot.showMessage("Failed to detect external IP address, check your proxy settings. \n\n Make sure to use the format scheme://user:pass@host:port");
