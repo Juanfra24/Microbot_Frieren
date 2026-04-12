@@ -364,6 +364,7 @@ After accepting upstream's `gradle.properties`, our CI version (`microbot.versio
 
 | Date | Upstream version | Commits merged | Notable changes |
 |------|-----------------|----------------|-----------------|
+| 2026-04-12 | 2.4.0 | 151 | Quest helper auto-obtain missing items + ironman guard, pathfinder packed-int set optimisation + null transport skip, OnClientThread queryable guardrail + scanner, version bump 2.2.0→2.2.1→2.2.4→2.3.9→2.4.0, ShortestPath new transport TSVs (hot air balloons, magic mushtrees, seasonal), seasonal_transports collision map update |
 | 2026-04-10 | 2.2.4 | 161 | AgentServer embedded HTTP server for AI agent control, 100+ performance/correctness fix(review) commits, GameTickBroadcaster, FieldUtil, autonomous review/fix/test loop scripts, ClientThread guardrail scanner, ShortestPath transport sync (hot air balloons, magic mushtrees, seasonal transports), MicrobotPluginHubPanel UI refresh + double-click install |
 | 2026-04-03 | 2.1.35 | 18 | Game revision update 2026-4-1 (GameVals, Legacy IDs, Item variations, Widget IDs), RuneLite 1.12.23 release + 1.12.24-SNAPSHOT bump, EntityOps API export, cannon Chasm of Fire spot fix, gradle incremental build fix, xp updater fix, login screen improvements |
 | 2026-03-31 | 2.1.34 | 12 | LootManager dead-player location fix, Rs2Npc isDead inversion fix, Rs2Shop break fix, Rs2GameObject dedup filter, Rs2Walker slf4j logging |

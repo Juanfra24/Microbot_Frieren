@@ -8,7 +8,7 @@ import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.PluginInstantiationException;
 import net.runelite.client.plugins.PluginManager;
-import net.runelite.client.plugins.microbot.accountselector.AutoLoginPlugin;
+import net.runelite.client.plugins.microbot.commandcenter.AutoLoginPlugin;
 
 import javax.inject.Inject;
 import javax.swing.*;
