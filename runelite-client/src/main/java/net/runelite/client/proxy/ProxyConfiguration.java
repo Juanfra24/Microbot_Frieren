@@ -4,11 +4,15 @@ import joptsimple.ArgumentAcceptingOptionSpec;
 import joptsimple.OptionSet;
 import net.runelite.client.plugins.microbot.Microbot;
 
+import java.io.IOException;
 import java.net.Authenticator;
 import java.net.PasswordAuthentication;
 import java.net.URI;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Properties;
 
 /**
  * Configures the JVM to use a SOCKS5 proxy if the appropriate command line argument is provided.
@@ -17,20 +21,39 @@ public class ProxyConfiguration {
 
     /**
      * Sets up the proxy configuration based on the provided options.
-     * @param options
-     * @param proxyInfo
+     * If the --proxy CLI arg is absent, falls back to reading proxy=<url>
+     * from credentials.properties inside the Command Center profile dir (when
+     * --cc-profile-dir is set). This keeps proxy credentials out of argv,
+     * which is readable by any local user via /proc/&lt;pid&gt;/cmdline or Task
+     * Manager.
+     *
+     * @return the resolved proxy URL if a proxy was configured, or null.
      */
-    public static void setupProxy(OptionSet options, ArgumentAcceptingOptionSpec<String> proxyInfo) {
-        if (!options.has(proxyInfo)) {
-            return;
+    public static String setupProxy(OptionSet options, ArgumentAcceptingOptionSpec<String> proxyInfo) {
+        String proxyUrl = null;
+        if (options.has(proxyInfo)) {
+            proxyUrl = options.valueOf(proxyInfo);
+        } else {
+            // Fallback: the Command Center writes proxy=<url> into
+            // credentials.properties so creds never hit argv. cc-profile-dir
+            // is set as a system property by the RuneLite entry point
+            // immediately before this call.
+            String ccProfileDir = System.getProperty("cc-profile-dir");
+            if (ccProfileDir != null && !ccProfileDir.isEmpty()) {
+                proxyUrl = readProxyFromCredentials(ccProfileDir);
+            }
         }
 
-        URI uri = URI.create(options.valueOf(proxyInfo));
+        if (proxyUrl == null || proxyUrl.isEmpty()) {
+            return null;
+        }
 
         if (options.has("proxy-type")) {
             Microbot.showMessage("Proxy type is no longer supported, please use the format -proxy=socks://user:pass@host:port or http://user:pass@host:port");
             System.exit(1);
         }
+
+        URI uri = URI.create(proxyUrl);
 
         String host = uri.getHost();
         String scheme = Optional.ofNullable(uri.getScheme()).orElse("").toLowerCase(Locale.ROOT);
@@ -48,6 +71,32 @@ public class ProxyConfiguration {
         if (user != null) {
             setupAuthenticator(user, pass);
         }
+
+        return proxyUrl;
+    }
+
+    /**
+     * Reads the proxy=&lt;url&gt; line from the credentials.properties file in
+     * the given Command Center profile directory. Returns null if the file or
+     * the key is absent. Errors are silently ignored — the CLI fallback will
+     * handle reporting.
+     */
+    private static String readProxyFromCredentials(String ccProfileDir) {
+        if (ccProfileDir == null || ccProfileDir.isEmpty()) {
+            return null;
+        }
+        Path credentialsFile = Path.of(ccProfileDir, "credentials.properties");
+        if (!Files.exists(credentialsFile)) {
+            return null;
+        }
+        Properties props = new Properties();
+        try (var reader = Files.newBufferedReader(credentialsFile)) {
+            props.load(reader);
+        } catch (IOException e) {
+            return null;
+        }
+        String proxy = props.getProperty("proxy");
+        return (proxy == null || proxy.isEmpty()) ? null : proxy;
     }
 
     /**
