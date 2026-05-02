@@ -1,18 +1,31 @@
-# Microbot Frieren - Claude Code Guidelines
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Private fork of [chsami/Microbot](https://github.com/chsami/Microbot) — an OSRS automation client built on RuneLite. Telemetry removed, security hardened, integrated with Command Center.
 
 ## Build & Test
 
 ```bash
-./gradlew :runelite-client:compileJava        # Quick compile
-./gradlew build                               # Full build (tests disabled by default)
-./gradlew :runelite-client:test               # Run tests (enable in build.gradle.kts first)
+./gradlew :client:compileJava              # Quick compile check
+./gradlew buildAll                         # Full build (all included builds)
+./gradlew :client:assemble                 # Shaded JAR → runelite-client/build/libs/
 ```
 
-- **Java:** 17+ (JDK required for building)
-- **Build system:** Gradle Kotlin DSL (composite build: cache, runelite-api, runelite-client, runelite-jshell)
-- **Version:** Set in `gradle.properties` (`microbot.version`)
+**Test tasks** (all others are disabled by default):
+
+```bash
+./gradlew :client:runUnitTests             # CI-safe unit tests; includes ClientThreadGuardrailTest
+./gradlew :client:runTests                 # Full test run with timezone setup
+./gradlew :client:runDebugTests            # Debug test run
+./gradlew :client:runIntegrationTest       # Requires live running game client
+./gradlew :client:runClientThreadScanner   # Regenerates docs/client-thread-manifest.md + .tsv
+./gradlew :client:regenerateClientThreadGuardrailBaseline  # Update guardrail allow-list after intentional refactors
+```
+
+- **Java:** 17+ (JDK required)
+- **Build system:** Gradle Kotlin DSL — composite build: `:client` = `runelite-client/`, `:jshell` = `runelite-jshell/`, plus `includeBuild` for `cache`, `runelite-api`, `runelite-gradle-plugin`
+- **Version:** `gradle.properties` → `microbot.version`
 - **CI:** `.github/workflows/build.yml` — semantic versioning (v1.0.N auto-increment), shaded JAR, GitHub Release
 
 ## Project Layout
@@ -160,16 +173,64 @@ var coins = Microbot.getRs2TileItemCache().query()
 
 Full guide: `runelite-client/src/main/java/net/runelite/client/plugins/microbot/api/QUERYABLE_API.md`
 
-## Interaction & Timing Tips
+## Interaction & Timing Rules
 
 - Never sleep on the RuneLite client thread; use the script thread with `sleep(...)` / `sleepUntil(...)`
+- Never use static sleeps like `sleep(12000)` — always use `sleepUntil(BooleanSupplier)` with optional timeout. Static delays are race-prone; conditional waits self-document the awaited state.
 - After interactions, wait for state changes (e.g., `Rs2Bank.isOpen()`, `Rs2Player.isAnimating()`)
 - Limit search radius with `.within(...)` to reduce overhead
 - Cache query results when reusing in a loop
+- `ClientThreadGuardrailTest` (runs in `runUnitTests`) fails when `Rs2*` or query API code calls a client-thread-only RuneLite API outside a `clientThread.invoke*()` lambda
+
+## Microbot CLI (Runtime Agent Control)
+
+`./microbot-cli` is a bash wrapper at repo root; all commands output JSON. Requires a running game client.
+
+```bash
+./microbot-cli ct Player.getName          # Client-thread lookup (~10ms, offline)
+./microbot-cli ct getItem --like          # Fuzzy match
+./microbot-cli login now --world 381 --timeout 60
+./microbot-cli keyboard type "text"
+./microbot-cli keyboard enter
+./microbot-cli widgets click 548 52
+./microbot-cli varbit <id>
+```
+
+**Client-thread lookup** (`ct` / `client-thread`): reads `docs/client-thread-lookup.tsv`; verdicts: `REQUIRED (asserted)`, `Strongly indicated (N signals)`, `Likely (single signal)`. Absence from manifest does **not** prove a method is safe.
+
+Full reference: `docs/MICROBOT_CLI.md`; HTTP API: `docs/AGENT_SERVER.md`
+
+## Working with In-Game Settings
+
+Always use the settings search bar — never navigate by tab index (tab indices shift on game updates; the "Interfaces" tab was removed).
+
+Flow: open Settings tab (548:52) → click "All Settings" → click Search (134:11) → type setting name → find widget → click it.
+
+```bash
+./microbot-cli widgets click 548 52 && sleep 1 && \
+./microbot-cli widgets click --text "All Settings" && sleep 1 && \
+./microbot-cli widgets click 134 11 && sleep 1 && \
+./microbot-cli keyboard type "level-up" && sleep 1 && \
+./microbot-cli widgets click --text "Show level only"
+```
+
+For dropdowns: invoke `Select` action to open, then `widgets click --text` to pick an option. Always verify with `./microbot-cli varbit <id>`.
+
+Details: `runelite-client/src/main/java/net/runelite/client/plugins/microbot/util/settings/CLAUDE.md`
+
+## Entity Gotchas
+
+Per-entity footgun guides live in `docs/entity-guides/`. Each captures real bugs from hidden assumptions at call sites.
+
+**Always check `docs/entity-guides/README.md` first** before implementing or modifying any utility under `microbot/util/<entity>/`.
+
+- [`docs/entity-guides/items.md`](docs/entity-guides/items.md) — read before touching `Rs2Inventory`, `Rs2Bank`, `Rs2Equipment`, `Rs2GroundItem`, `Rs2Shop`, `Rs2DepositBox`, or any helper that maps item names to a hardcoded menu action.
+
+When you fix a bug whose root cause was a hidden entity assumption, add a numbered gotcha to the relevant guide so future agents don't repeat it.
 
 ## Security Posture
 
-- **Telemetry removed:** MicrobotVersionChecker, RandomFactClient, MicrobotApi (→ microbot.cloud) deleted
+- **Telemetry removed:** `MicrobotVersionChecker`, `RandomFactClient`, `MicrobotApi` (→ `microbot.cloud`) deleted
 - **CredentialRedactor** strips sensitive data from logs
 - **Localhost-only** Status API (no remote exposure)
 - **RuneLite core telemetry** gated by `--disable-telemetry` flag (not removed — would break upstream sync)
@@ -183,3 +244,5 @@ Full guide: `runelite-client/src/main/java/net/runelite/client/plugins/microbot/
 - Upstream sync guide: `docs/upstream-sync.md`
 - API reference: `docs/api/` (30+ utility docs)
 - Example scripts: `runelite-client/src/main/java/.../microbot/example/`
+- Full Microbot plugin guide (threading, Rs2* utilities, queryable API, script lifecycle): `runelite-client/src/main/java/net/runelite/client/plugins/microbot/CLAUDE.md`
+- Agentic testing loop: `docs/AGENTIC_TESTING_LOOP.md`
