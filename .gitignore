@@ -46,6 +46,7 @@ target/
 logs/
 REVIEW_FINDINGS.md.bak
 .claude/scheduled_tasks.lock
+.claude/settings.local.json
 __pycache__/
 *.py[cod]
 
