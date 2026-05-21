@@ -463,7 +463,7 @@ public class Rs2Inventory {
     public static boolean dropAll(Predicate<Rs2ItemModel> predicate) {
         items(predicate).forEachOrdered(item -> {
             drop(item);
-            if (!Rs2AntibanSettings.naturalMouse) sleep(150, 300);
+            sleep(150, 300);
         });
         return true;
     }
@@ -516,8 +516,7 @@ public class Rs2Inventory {
         for (Rs2ItemModel item : itemsToDrop) {
             if (item == null) continue;
             invokeMenu(item, "Drop");
-            if (!Rs2AntibanSettings.naturalMouse)
-                sleep(150, 300);
+            sleep(150, 300);
         }
         return true;
     }
@@ -624,11 +623,10 @@ public class Rs2Inventory {
             
             invokeMenu(item, "Drop");
             droppedCount++;
-            
-            if (!Rs2AntibanSettings.naturalMouse)
-                sleep(150, 300);
+
+            sleep(150, 300);
         }
-        
+
         return droppedCount;
     }
 
@@ -658,11 +656,10 @@ public class Rs2Inventory {
             
             invokeMenu(item, "Drop");
             droppedCount++;
-            
-            if (!Rs2AntibanSettings.naturalMouse)
-                sleep(150, 300);
+
+            sleep(150, 300);
         }
-        
+
         return droppedCount;
     }
 

@@ -22,14 +22,18 @@ import javax.swing.JTextField;
 import javax.swing.SwingConstants;
 import javax.swing.border.Border;
 import javax.swing.border.TitledBorder;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.config.Keybind;
 import net.runelite.client.plugins.microbot.Microbot;
 import net.runelite.client.plugins.microbot.shortestpath.components.ComboBoxListRenderer;
+import net.runelite.client.plugins.microbot.ui.MicrobotHotkeyButton;
 import net.runelite.client.plugins.microbot.util.bank.Rs2Bank;
 import net.runelite.client.plugins.microbot.util.bank.enums.BankLocation;
 import net.runelite.client.plugins.microbot.util.depositbox.DepositBoxLocation;
 import net.runelite.client.plugins.microbot.util.depositbox.Rs2DepositBox;
-import net.runelite.client.plugins.microbot.util.walker.Rs2Walker;
 import net.runelite.client.plugins.microbot.util.walker.enums.Allotments;
 import net.runelite.client.plugins.microbot.util.walker.enums.Birds;
 import net.runelite.client.plugins.microbot.util.walker.enums.Bushes;
@@ -48,7 +52,6 @@ import net.runelite.client.plugins.microbot.util.walker.enums.SpecialHuntingArea
 import net.runelite.client.plugins.microbot.util.walker.enums.Trees;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.ImageUtil;
-
 import net.runelite.client.plugins.cluescrolls.ClueScrollPlugin;
 import net.runelite.client.plugins.cluescrolls.clues.ClueScroll;
 import net.runelite.client.plugins.cluescrolls.clues.LocationClueScroll;
@@ -58,6 +61,8 @@ public class ShortestPathPanel extends PluginPanel
 {
 
 	private final ShortestPathPlugin plugin;
+	private final ShortestPathConfig config;
+	private final ConfigManager configManager;
 
 	private JTextField xField, yField, zField;
 	private JComboBox<BankLocation> bankComboBox;
@@ -82,10 +87,12 @@ public class ShortestPathPanel extends PluginPanel
 	private javax.swing.Timer clueInfoTimer;
 
 	@Inject
-	private ShortestPathPanel(ShortestPathPlugin plugin)
+	private ShortestPathPanel(ShortestPathPlugin plugin, ShortestPathConfig config, ConfigManager configManager)
 	{
 		super();
 		this.plugin = plugin;
+		this.config = config;
+		this.configManager = configManager;
 
 		setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
 		setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -202,6 +209,9 @@ public class ShortestPathPanel extends PluginPanel
 		panel.add(coordinatesPanel);
 		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(buttonPanel);
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("customLocationToggleHotkey", config.customLocationToggleHotkey(),
+			"Toggle hotkey: start walking to the X/Y/Z coordinates entered above; press again to stop."));
 
 		return panel;
 	}
@@ -236,21 +246,14 @@ public class ShortestPathPanel extends PluginPanel
 			startWalking(ge);
 		});
 
-		useNearestBankButton.addActionListener(e -> {
-			CompletableFuture.supplyAsync(Rs2Bank::getNearestBank)
-				.thenAccept(nearestBank -> {
-					if (nearestBank != null)
-					{
-						startWalking(nearestBank.getWorldPoint());
-					}
-				})
-				.exceptionally(ex -> {
-					Microbot.log("Error while finding the nearest bank: " + ex.getMessage());
-					return null;
-				});
-		});
+		useNearestBankButton.addActionListener(e -> startWalkingNearestBank());
 
-		nearestBankPanel.add(useNearestBankButton);
+		// First grid row: [Go To Nearest Bank] [hotkey]
+		JPanel nearestBankRow = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
+		nearestBankRow.add(useNearestBankButton);
+		nearestBankRow.add(createHotkeyButton("nearestBankHotkey", config.nearestBankHotkey(),
+			"Hotkey: walk to the nearest bank from your current location."));
+		nearestBankPanel.add(nearestBankRow);
 		nearestBankPanel.add(goToGrandExchangeButton); // Go to GE button
 
 		buttonPanel.add(startButton);
@@ -259,7 +262,10 @@ public class ShortestPathPanel extends PluginPanel
 		panel.add(bankComboBox);
 		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(buttonPanel);
-		panel.add(Box.createRigidArea(new Dimension(0, 2)));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("bankToggleHotkey", config.bankToggleHotkey(),
+			"Toggle hotkey: start walking to the bank selected above; press again to stop."));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(nearestBankPanel);
 
 		return panel;
@@ -284,24 +290,14 @@ public class ShortestPathPanel extends PluginPanel
 		startButton.addActionListener(e -> startWalking(getSelectedDepositBox().getWorldPoint()));
 		stopButton.addActionListener(e -> stopWalking());
 
-		JPanel nearestDepositBoxPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+		JPanel nearestDepositBoxPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 5, 0));
 		JButton useNearestDepositBoxButton = new JButton("Go To Nearest Deposit Box");
 
-		useNearestDepositBoxButton.addActionListener(e -> {
-			CompletableFuture.supplyAsync(Rs2DepositBox::getNearestDepositBox)
-				.thenAccept(nearestDepositBox -> {
-					if (nearestDepositBox != null)
-					{
-						startWalking(nearestDepositBox.getWorldPoint());
-					}
-				})
-				.exceptionally(ex -> {
-					Microbot.log("Error while finding the nearest deposit box: " + ex.getMessage());
-					return null;
-				});
-		});
+		useNearestDepositBoxButton.addActionListener(e -> startWalkingNearestDepositBox());
 
 		nearestDepositBoxPanel.add(useNearestDepositBoxButton);
+		nearestDepositBoxPanel.add(createHotkeyButton("nearestDepositBoxHotkey", config.nearestDepositBoxHotkey(),
+			"Hotkey: walk to the nearest deposit box from your current location."));
 
 		buttonPanel.add(startButton);
 		buttonPanel.add(stopButton);
@@ -309,7 +305,10 @@ public class ShortestPathPanel extends PluginPanel
 		panel.add(depositBoxComboBox);
 		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(buttonPanel);
-		panel.add(Box.createRigidArea(new Dimension(0, 2)));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("depositBoxToggleHotkey", config.depositBoxToggleHotkey(),
+			"Toggle hotkey: start walking to the deposit box selected above; press again to stop."));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(nearestDepositBoxPanel);
 
 		return panel;
@@ -347,7 +346,10 @@ public class ShortestPathPanel extends PluginPanel
 		panel.add(slayerMasterComboBox);
 		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(buttonPanel);
-		panel.add(Box.createRigidArea(new Dimension(0, 2)));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("slayerMasterToggleHotkey", config.slayerMasterToggleHotkey(),
+			"Toggle hotkey: start walking to the slayer master selected above; press again to stop."));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(turaelSkipPanel);
 
 		return panel;
@@ -355,14 +357,60 @@ public class ShortestPathPanel extends PluginPanel
 
 	private JPanel createQuestLocationPanel()
 	{
-		// QuestHelper plugin removed — return empty panel
 		JPanel panel = new JPanel();
 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-		panel.setBorder(BorderFactory.createTitledBorder("Travel to Quest Location (unavailable)"));
-		JLabel label = new JLabel("<html><center><small>QuestHelper plugin not available</small></center></html>");
-		label.setHorizontalAlignment(SwingConstants.CENTER);
-		label.setAlignmentX(Component.CENTER_ALIGNMENT);
-		panel.add(label);
+		panel.setBorder(createCenteredTitledBorder("Travel to Quest Location", "/net/runelite/client/plugins/microbot/questhelper/quest_icon.png"));
+
+		// Quest info label
+		JLabel questInfoLabel = new JLabel("Loading quest info...");
+		questInfoLabel.setHorizontalAlignment(SwingConstants.CENTER);
+		questInfoLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+		questInfoLabel.setMaximumSize(new Dimension(Integer.MAX_VALUE, questInfoLabel.getPreferredSize().height * 2));
+		
+		// Update quest info dynamically
+		questInfoTimer = new javax.swing.Timer(1000, e -> {
+			String questInfo = getCurrentQuestInfo();
+			questInfoLabel.setText("<html><center>" + questInfo + "</center></html>");
+		});
+		questInfoTimer.start();
+
+		JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+		JButton startButton = new JButton("Start");
+		JButton stopButton = new JButton("Stop");
+
+		startButton.addActionListener(e -> {
+			WorldPoint questLocation = getCurrentQuestLocation();
+			if (questLocation != null)
+			{
+				Microbot.log("Walking to quest objective location");
+				startWalking(questLocation);
+			}
+			else
+			{
+				Microbot.log("Cannot walk to quest location: QuestHelper plugin not available");
+			}
+		});
+		
+		stopButton.addActionListener(e -> stopWalking());
+
+		buttonPanel.add(startButton);
+		buttonPanel.add(stopButton);
+
+		JPanel helpPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+		JLabel helpLabel = new JLabel("<html><center><small>Requires QuestHelper plugin<br>with an active quest</small></center></html>");
+		helpLabel.setHorizontalAlignment(SwingConstants.CENTER);
+		helpPanel.add(helpLabel);
+
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(questInfoLabel);
+		panel.add(Box.createRigidArea(new Dimension(0, 10)));
+		panel.add(buttonPanel);
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("questToggleHotkey", config.questToggleHotkey(),
+			"Toggle hotkey: start walking to the active QuestHelper step; press again to stop."));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(helpPanel);
+
 		return panel;
 	}
 
@@ -425,6 +473,9 @@ public class ShortestPathPanel extends PluginPanel
 		}
 		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(buttonPanel);
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("farmingToggleHotkey", config.farmingToggleHotkey(),
+			"Toggle hotkey: start walking to the farming location selected above; press again to stop."));
 
 		return panel;
 	}
@@ -493,7 +544,10 @@ public class ShortestPathPanel extends PluginPanel
 		}
 		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(buttonPanel);
-		panel.add(Box.createRigidArea(new Dimension(0, 2)));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("hunterToggleHotkey", config.hunterToggleHotkey(),
+			"Toggle hotkey: start walking to the hunting area selected above; press again to stop."));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(hunterGuildPanel);
 
 		return panel;
@@ -585,17 +639,131 @@ public class ShortestPathPanel extends PluginPanel
 		}
 	}
 
-	private void startWalking(WorldPoint point)
+	/**
+	 * Creates a standalone hotkey-binding button. Seeds its value from the
+	 * stored config and writes back on focus-lost. The plugin reads the same
+	 * config key via HotkeyListener, so rebinding takes effect immediately.
+	 */
+	private MicrobotHotkeyButton createHotkeyButton(String keyName, Keybind initial, String tooltip)
+	{
+		MicrobotHotkeyButton button = new MicrobotHotkeyButton(initial == null ? Keybind.NOT_SET : initial, false);
+		Dimension size = new Dimension(90, 22);
+		button.setPreferredSize(size);
+		button.setMinimumSize(size);
+		button.setMaximumSize(size);
+		button.setToolTipText(tooltip);
+		button.addFocusListener(new FocusAdapter()
+		{
+			@Override
+			public void focusLost(FocusEvent e)
+			{
+				configManager.setConfiguration(ShortestPathPlugin.CONFIG_GROUP, keyName, button.getValue());
+			}
+		});
+		return button;
+	}
+
+	/**
+	 * Wraps createHotkeyButton in a centered row for cards where the hotkey
+	 * sits on its own line under the Start/Stop row.
+	 */
+	private JPanel createHotkeyRow(String keyName, Keybind initial, String tooltip)
+	{
+		JPanel row = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 0));
+		row.add(createHotkeyButton(keyName, initial, tooltip));
+		return row;
+	}
+
+	void startWalking(WorldPoint point)
 	{
 		Microbot.log("Web walking starting. Traveling to Custom Location (" + point.getX() + ", " + point.getY() + ", " + point.getPlane() + ").");
 		plugin.getShortestPathScript().setTriggerWalker(point);
 	}
 
-	private void stopWalking()
+	void stopWalking()
 	{
 		Microbot.log("Web walking stopping..");
-		plugin.getShortestPathScript().setTriggerWalker(null);
-		Rs2Walker.setTarget(null);
+		plugin.getShortestPathScript().setTriggerWalker(null, "panel:stop-walking-button");
+	}
+
+	/* ------------------------------------------------------------------
+	 * Hotkey integration: per-category "peek target" and "start walking".
+	 * Mirrors each panel's Start button so ShortestPathPlugin's
+	 * HotkeyListeners can trigger the same action without duplicating
+	 * the category-specific selection logic.
+	 * ------------------------------------------------------------------ */
+
+	/* Enum-unwrap helpers for the three categories whose combo-box items don't
+	 * directly expose a WorldPoint. The other five categories (custom location,
+	 * quest, clue, farming, hunter) already expose WorldPoint-returning getters
+	 * that the plugin uses as method references. */
+
+	WorldPoint getBankTarget()
+	{
+		BankLocation bank = getSelectedBank();
+		return bank == null ? null : bank.getWorldPoint();
+	}
+
+	WorldPoint getDepositBoxTarget()
+	{
+		DepositBoxLocation box = getSelectedDepositBox();
+		return box == null ? null : box.getWorldPoint();
+	}
+
+	WorldPoint getSlayerMasterTarget()
+	{
+		SlayerMasters master = getSelectedSlayerMaster();
+		return master == null ? null : master.getWorldPoint();
+	}
+
+	void startWalkingNearestBank()
+	{
+		CompletableFuture.supplyAsync(Rs2Bank::getNearestBank)
+			.thenAccept(nearestBank -> {
+				if (nearestBank != null)
+				{
+					startWalking(nearestBank.getWorldPoint());
+				}
+				else
+				{
+					Microbot.log("WebWalker: could not find a nearest bank.");
+				}
+			})
+			.exceptionally(ex -> {
+				Microbot.log("Error while finding the nearest bank: " + ex.getMessage());
+				return null;
+			});
+	}
+
+	void startWalkingNearestDepositBox()
+	{
+		CompletableFuture.supplyAsync(Rs2DepositBox::getNearestDepositBox)
+			.thenAccept(nearestDepositBox -> {
+				if (nearestDepositBox != null)
+				{
+					startWalking(nearestDepositBox.getWorldPoint());
+				}
+				else
+				{
+					Microbot.log("WebWalker: could not find a nearest deposit box.");
+				}
+			})
+			.exceptionally(ex -> {
+				Microbot.log("Error while finding the nearest deposit box: " + ex.getMessage());
+				return null;
+			});
+	}
+
+	WorldPoint getCurrentQuestLocation()
+	{
+		// QuestHelper plugin removed — return empty panel
+		return null;
+	}
+
+	private String getCurrentQuestInfo()
+	{
+		// QuestHelper plugin removed
+		return "QuestHelper plugin not available";
 	}
 
 	private JPanel createClueLocationPanel()
@@ -660,7 +828,10 @@ public class ShortestPathPanel extends PluginPanel
 		panel.add(clueInfoLabel);
 		panel.add(Box.createRigidArea(new Dimension(0, 10)));
 		panel.add(buttonPanel);
-		panel.add(Box.createRigidArea(new Dimension(0, 2)));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
+		panel.add(createHotkeyRow("clueToggleHotkey", config.clueToggleHotkey(),
+			"Toggle hotkey: start walking to the active clue step; press again to stop."));
+		panel.add(Box.createRigidArea(new Dimension(0, 5)));
 		panel.add(helpPanel);
 
 		return panel;
@@ -674,7 +845,7 @@ public class ShortestPathPanel extends PluginPanel
 			.orElse(null);
 	}
 
-	private WorldPoint getCurrentClueLocation()
+	WorldPoint getCurrentClueLocation()
 	{
 		ClueScrollPlugin cluePlugin = getCluePlugin();
 		if (cluePlugin == null)

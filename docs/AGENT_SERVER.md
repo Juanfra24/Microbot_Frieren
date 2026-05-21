@@ -21,31 +21,13 @@ The Agent Server is an embedded HTTP server that exposes Microbot's widget syste
 │  │   ├─ Pagination, query parsing                │
 │  │   └─ Request body reading with size limits    │
 │  │                                               │
-│  ├─ Widget Handlers                              │
-│  │   ├─ /widgets/list                            │
-│  │   ├─ /widgets/search                          │
-│  │   ├─ /widgets/describe                        │
-│  │   └─ /widgets/click                           │
-│  │                                               │
-│  ├─ Game Interaction Handlers                    │
-│  │   ├─ /inventory, /inventory/interact, /drop   │
-│  │   ├─ /npcs, /npcs/interact                    │
-│  │   ├─ /objects, /objects/interact               │
-│  │   ├─ /ground-items, /ground-items/pickup      │
-│  │   ├─ /walk                                    │
-│  │   ├─ /bank, /bank/open, /deposit, /withdraw   │
-│  │   ├─ /dialogue, /continue, /select            │
-│  │   └─ /skills                                  │
-│  │                                               │
-│  ├─ /login (status + trigger login)              │
-│  │                                               │
-│  ├─ Script Lifecycle                             │
-│  │   ├─ /scripts (list)                          │
-│  │   ├─ /scripts/start, /scripts/stop            │
-│  │   ├─ /scripts/status                          │
-│  │   └─ /scripts/results                         │
-│  │                                               │
-│  └─ /state                                       │
+│  ├─ Widgets and UI interaction                   │
+│  ├─ Game state, skills, varbits, varps           │
+│  ├─ Inventory, bank, dialogue, walking           │
+│  ├─ NPCs, objects, ground items                  │
+│  ├─ Login, profiles, scripts, quest helper       │
+│  ├─ Keyboard, screenshots, settings/config       │
+│  └─ Dynamic script and state-machine tooling     │
 └────────────────────┬─────────────────────────────┘
                      │ Client thread dispatch
 ┌────────────────────▼─────────────────────────────┐
@@ -53,14 +35,15 @@ The Agent Server is an embedded HTTP server that exposes Microbot's widget syste
 └──────────────────────────────────────────────────┘
 ```
 
-The server binds to `127.0.0.1` only. All game data access is thread-safe via `runOnClientThreadOptional` or the singleton cache queryable API.
+TCP mode binds to `127.0.0.1` only. UDS mode binds to `~/.runelite/.agent.sock` and falls back to TCP if UDS startup fails. All game data access is thread-safe via `runOnClientThreadOptional` or the singleton cache queryable API.
 
 ## Server Lifecycle
 
 - The server uses **daemon threads** so it never prevents the JVM from exiting when the client closes.
 - A **JVM shutdown hook** stops the server cleanly on client exit (window close, kill signal, `System.exit`).
-- On startup, if the port is already in use (e.g., a zombie from a previous session), the plugin **automatically kills the old process** and reclaims the port.
+- On TCP startup, if the port is already in use, this client skips Agent Server startup for that instance.
 - Toggling the plugin off and back on works cleanly — the old server is stopped before the new one starts.
+- Optional stealth-bind mode opens the socket only while a Microbot script is active, then tears it down after an idle grace period.
 
 ## Setup
 
@@ -68,6 +51,7 @@ The server binds to `127.0.0.1` only. All game data access is thread-safe via `r
 2. Launch the client
 3. Enable **"Agent Server"** in the Microbot plugin list
 4. Server starts on port `8081` (configurable)
+5. The auth token is auto-generated and written to `~/.runelite/.agent-token`; `./microbot-cli` reads it automatically.
 
 ## Configuration
 
@@ -75,6 +59,9 @@ The server binds to `127.0.0.1` only. All game data access is thread-safe via `r
 |---------|---------|-------------|
 | Port | `8081` | HTTP server port |
 | Max Results | `200` | Default limit for list/query endpoints |
+| Auth token | generated | Required in `X-Agent-Token`; stored in `~/.runelite/.agent-token` for CLI use |
+| Stealth bind | `false` | Open the socket only while scripts are active |
+| Bind mode | `TCP` | `TCP` on localhost or `UDS` at `~/.runelite/.agent.sock` |
 
 CLI environment variables:
 
@@ -83,6 +70,8 @@ CLI environment variables:
 | `MICROBOT_HOST` | `127.0.0.1` | Server host |
 | `MICROBOT_PORT` | `8081` | Server port |
 | `MICROBOT_TIMEOUT` | `30` | Request timeout in seconds |
+| `MICROBOT_TOKEN` | unset | Override the `X-Agent-Token` value |
+| `MICROBOT_TOKEN_FILE` | `~/.runelite/.agent-token` | Token file path |
 
 ## API Reference
 
@@ -609,6 +598,72 @@ curl -X POST -d '{"world":461,"timeout":30}' http://127.0.0.1:8081/login
 curl -X POST -d '{"world":383,"timeout":30}' http://127.0.0.1:8081/login
 # → {"success":true,"message":"Login successful","currentWorld":383}
 ```
+
+### Profiles
+
+#### GET /profiles
+
+Lists all non-internal profiles with their active indicator, membership status, and world selection.
+
+```bash
+curl http://127.0.0.1:8081/profiles
+```
+
+```json
+{
+  "count": 2,
+  "activeProfile": "player@email.com",
+  "profiles": [
+    {
+      "name": "player@email.com",
+      "isMember": true,
+      "selectedWorld": "random-members",
+      "active": true
+    },
+    {
+      "name": "alt-account@email.com",
+      "isMember": false,
+      "selectedWorld": 383,
+      "active": false
+    }
+  ]
+}
+```
+
+The `selectedWorld` field shows: `"auto"` (null — use fallback logic), `"random-members"` (-1), `"random-f2p"` (-2), or a specific world number.
+
+#### POST /profiles
+
+Switch the active profile. The switched profile will be used by the next `POST /login`.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Profile name (case-insensitive exact match) |
+
+```bash
+# Switch profile
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"name":"alt-account@email.com"}' \
+  http://127.0.0.1:8081/profiles
+```
+
+```json
+{
+  "success": true,
+  "message": "Switched to profile 'alt-account@email.com'",
+  "profile": {
+    "name": "alt-account@email.com",
+    "isMember": false,
+    "selectedWorld": 383,
+    "active": true
+  }
+}
+```
+
+**Error responses:**
+- `400` — Missing or blank `name` field
+- `404` — No profile matches the given name (response includes `available` list)
+- `503` — Profile system not initialized
 
 ### Script Lifecycle
 

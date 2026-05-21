@@ -7,6 +7,112 @@ import java.awt.*;
 @ConfigGroup(ShortestPathPlugin.CONFIG_GROUP)
 @ConfigInformation("Press 'CTRL + X' to stop the webwalker automatically.")
 public interface ShortestPathConfig extends Config {
+    /* ------------------------------------------------------------------
+     * Hotkeys — stored as config values but bound/displayed inline on
+     * each side-panel category card (see ShortestPathPanel). Marked
+     * hidden so they don't clutter the settings UI.
+     * ------------------------------------------------------------------ */
+
+    @ConfigItem(
+            keyName = "customLocationToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind customLocationToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "bankToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind bankToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "nearestBankHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind nearestBankHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "depositBoxToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind depositBoxToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "nearestDepositBoxHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind nearestDepositBoxHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "slayerMasterToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind slayerMasterToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "questToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind questToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "clueToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind clueToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "farmingToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind farmingToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
+    @ConfigItem(
+            keyName = "hunterToggleHotkey",
+            name = "",
+            description = "",
+            hidden = true
+    )
+    default Keybind hunterToggleHotkey() {
+        return Keybind.NOT_SET;
+    }
+
     @ConfigSection(
             name = "Settings",
             description = "Options for the pathfinding",
@@ -270,7 +376,7 @@ public interface ShortestPathConfig extends Config {
     @ConfigItem(
             keyName = "useSeasonalTransports",
             name = "Use Seasonal Transports",
-            description = "Whether to include seasonal transports (e.g. clue compass) in the path.",
+            description = "Whether to include seasonal League transports (e.g. Map of Alacrity) in the path. League worlds only.",
             position = 19,
             section = sectionSettings
     )
@@ -658,6 +764,17 @@ public interface ShortestPathConfig extends Config {
         return 0;
     }
 
+    @ConfigItem(
+            keyName = "bankTripWhenCacheUnavailable",
+            name = "Bank trip when cache unavailable",
+            description = "When enabled, walker will visit/open nearest bank to bootstrap bank mirror cache before evaluating banked routes.",
+            position = 6,
+            section = sectionAdvanced
+    )
+    default boolean bankTripWhenCacheUnavailable() {
+        return true;
+    }
+
 	@ConfigSection(
 			name = "Spirit tree teleports",
 			description = "Toggle which spirit tree destinations to use",
@@ -717,7 +834,25 @@ public interface ShortestPathConfig extends Config {
 			position = 4,
 			section = sectionSpiritTrees
 	)
-	default boolean spiritTreeFarmingGuild() {
-		return true;
-	}
+    default boolean spiritTreeFarmingGuild() {
+        return true;
+    }
+
+    @ConfigSection(
+            name = "Developer",
+            description = "Optional — most users can ignore.",
+            position = 100
+    )
+    String sectionDeveloper = "sectionDeveloper";
+
+    @ConfigItem(
+            keyName = "reloadTransportDefinitions",
+            name = "Reload transport TSVs",
+            description = "Turn ON to reload web-walker transport tables from the client JAR; saves OFF automatically. Use after replacing packaged TSVs in a dev build.",
+            position = 0,
+            section = sectionDeveloper
+    )
+    default boolean reloadTransportDefinitions() {
+        return false;
+    }
 }
